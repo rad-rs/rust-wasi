@@ -31,7 +31,7 @@ pub(crate) struct LLVMRustTpdeOptions {
 pub(crate) struct TpdeWrapper {
     options: LLVMRustTpdeOptions,
     // Keep the dynamic library loaded while the function pointers are used.
-    _lib: Option<libloading::Library>,
+    _lib: Option<crate::llvm::dylib::Library>,
 }
 
 static TPDE_INSTANCE: OnceLock<TpdeWrapper> = OnceLock::new();
@@ -42,8 +42,8 @@ pub(crate) enum TpdeLibraryError {
     LoadFailed { err: String },
 }
 
-impl From<libloading::Error> for TpdeLibraryError {
-    fn from(err: libloading::Error) -> Self {
+impl From<crate::llvm::dylib::Error> for TpdeLibraryError {
+    fn from(err: crate::llvm::dylib::Error) -> Self {
         Self::LoadFailed { err: format!("{err:?}") }
     }
 }
@@ -89,7 +89,7 @@ impl TpdeWrapper {
             config::LlvmTpde::Try => LLVMRustTpdeMode::Try,
         };
         let tpde_path = Self::get_tpde_path(sysroot)?;
-        let lib = unsafe { libloading::Library::new(tpde_path)? };
+        let lib = unsafe { crate::llvm::dylib::Library::new(tpde_path)? };
         let llvm_get_pass_plugin_info =
             *unsafe { lib.get::<LLVMGetPassPluginInfoFn>(b"llvmGetPassPluginInfo\0")? };
         let options = LLVMRustTpdeOptions { mode, plugin: Some(llvm_get_pass_plugin_info) };

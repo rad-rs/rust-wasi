@@ -16,6 +16,7 @@ pub(crate) use self::metadata_kind::*;
 
 mod conversions;
 pub(crate) mod diagnostic;
+pub(crate) mod dylib;
 pub(crate) mod enzyme_ffi;
 mod ffi;
 mod metadata_kind;

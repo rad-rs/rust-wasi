@@ -160,18 +160,18 @@ pub(crate) mod Enzyme_AD {
         EnzymeSetCLBool: EnzymeSetCLBoolFn,
         EnzymeSetCLString: EnzymeSetCLStringFn,
         pub registerEnzymeAndPassPipeline: *const c_void,
-        lib: libloading::Library,
+        lib: crate::llvm::dylib::Library,
     }
 
     unsafe impl Sync for EnzymeWrapper {}
     unsafe impl Send for EnzymeWrapper {}
 
     fn load_ptr_by_symbol_mut_void(
-        lib: &libloading::Library,
+        lib: &crate::llvm::dylib::Library,
         bytes: &[u8],
-    ) -> Result<*mut c_void, libloading::Error> {
+    ) -> Result<*mut c_void, crate::llvm::dylib::Error> {
         unsafe {
-            let s: libloading::Symbol<'_, *mut c_void> = lib.get(bytes)?;
+            let s: crate::llvm::dylib::Symbol<'_, *mut c_void> = lib.get(bytes)?;
             // libloading = 0.9.0: try_as_raw_ptr always succeeds and returns Some
             let s = s.try_as_raw_ptr().unwrap();
             Ok(s)
@@ -195,8 +195,8 @@ pub(crate) mod Enzyme_AD {
     // e.g.
     // load_ptrs_by_symbols_fn(ABC: ABCFn, XYZ: XYZFn);
     // =>
-    // let ABC: libloading::Symbol<'_, ABCFn> = unsafe { lib.get(b"ABC")? };
-    // let XYZ: libloading::Symbol<'_, XYZFn> = unsafe { lib.get(b"XYZ")? };
+    // let ABC: crate::llvm::dylib::Symbol<'_, ABCFn> = unsafe { lib.get(b"ABC")? };
+    // let XYZ: crate::llvm::dylib::Symbol<'_, XYZFn> = unsafe { lib.get(b"XYZ")? };
     macro_rules! load_ptrs_by_symbols_fn {
         ($lib:expr, $($name:ident : $ty:ty),* $(,)?) => {
             $(
@@ -214,8 +214,8 @@ pub(crate) mod Enzyme_AD {
         LoadFailed { err: String },
     }
 
-    impl From<libloading::Error> for EnzymeLibraryError {
-        fn from(err: libloading::Error) -> Self {
+    impl From<crate::llvm::dylib::Error> for EnzymeLibraryError {
+        fn from(err: crate::llvm::dylib::Error) -> Self {
             Self::LoadFailed { err: format!("{err:?}") }
         }
     }
@@ -383,7 +383,7 @@ pub(crate) mod Enzyme_AD {
             sysroot: &rustc_session::config::Sysroot,
         ) -> Result<Self, EnzymeLibraryError> {
             let enzyme_path = Self::get_enzyme_path(sysroot)?;
-            let lib = unsafe { libloading::Library::new(enzyme_path)? };
+            let lib = unsafe { crate::llvm::dylib::Library::new(enzyme_path)? };
 
             load_ptrs_by_symbols_fn!(
                 lib,

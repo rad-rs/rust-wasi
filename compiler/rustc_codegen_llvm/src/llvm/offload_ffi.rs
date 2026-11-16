@@ -18,7 +18,7 @@ pub(crate) struct RustOffloadWrapper {
     LLVMRustOffloadMapper: LLVMRustOffloadMapperFn,
     LLVMRustOffloadWrapImages: LLVMRustOffloadWrapImagesFn,
     // Keep the dynamic library loaded while the function pointers are used.
-    _lib: libloading::Library,
+    _lib: crate::llvm::dylib::Library,
 }
 
 #[derive(Debug)]
@@ -27,8 +27,8 @@ pub(crate) enum RustOffloadLibraryError {
     LoadFailed { err: String },
 }
 
-impl From<libloading::Error> for RustOffloadLibraryError {
-    fn from(err: libloading::Error) -> Self {
+impl From<crate::llvm::dylib::Error> for RustOffloadLibraryError {
+    fn from(err: crate::llvm::dylib::Error) -> Self {
         Self::LoadFailed { err: format!("{err:?}") }
     }
 }
@@ -72,7 +72,7 @@ impl RustOffloadWrapper {
         sysroot: &rustc_session::config::Sysroot,
     ) -> Result<Self, RustOffloadLibraryError> {
         let rust_offload_path = Self::get_offload_path(sysroot)?;
-        let lib = unsafe { libloading::Library::new(rust_offload_path)? };
+        let lib = unsafe { crate::llvm::dylib::Library::new(rust_offload_path)? };
 
         let llvm_rust_offload_wrapper =
             *unsafe { lib.get::<LLVMRustOffloadMapperFn>(b"LLVMRustOffloadMapper\0")? };
