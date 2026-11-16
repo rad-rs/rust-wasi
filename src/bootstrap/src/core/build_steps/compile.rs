@@ -1374,8 +1374,11 @@ fn rustc_cargo_env(builder: &Builder<'_>, cargo: &mut Cargo, target: TargetSelec
         // We want to enable Polonius Alpha and Next Trait Solver by default on nighty
         cargo.env("CFG_DEFAULT_POLONIUS_NEXT", "1");
         cargo.env("CFG_DEFAULT_NEXT_SOLVER_GLOBALLY", "1");
-        // Enable 2 threads for the parallel frontend by default on nightly
-        cargo.env("CFG_DEFAULT_FRONTEND_JOBS", "2");
+        // Enable 2 threads for the parallel frontend by default on nightly. Not on WASI hosts
+        // though, where threads can't be parked by `parking_lot`'s wasm backend.
+        if !target.contains("wasi") {
+            cargo.env("CFG_DEFAULT_FRONTEND_JOBS", "2");
+        }
     }
 
     // These conditionals represent a tension between three forces:
@@ -1492,8 +1495,11 @@ fn rustc_llvm_env(builder: &Builder<'_>, cargo: &mut Cargo, target: TargetSelect
         && !target.contains("apple")
         && !target.contains("solaris")
     {
-        let libstdcxx_name =
-            if target.contains("windows-gnullvm") { "libc++.a" } else { "libstdc++.a" };
+        let libstdcxx_name = if target.contains("windows-gnullvm") || target.contains("wasi") {
+            "libc++.a"
+        } else {
+            "libstdc++.a"
+        };
         let file = compiler_file(
             builder,
             &builder.cxx(target).unwrap(),

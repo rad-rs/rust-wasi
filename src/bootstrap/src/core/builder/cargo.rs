@@ -394,6 +394,13 @@ impl Cargo {
             self.rustdocflags.arg(&arg);
         }
 
+        if target.contains("wasi") && builder.config.hosts.contains(&target) {
+            // rustc itself is being built for a WASI host. The target's self-contained linking
+            // needs lld to be present, but getting that to link for WASI is difficult, so use
+            // the external WASI SDK linker instead.
+            self.rustflags.arg("-Clink-self-contained=no");
+        }
+
         match builder.config.compress_debuginfo(target) {
             CompressDebuginfo::Zlib => {
                 // Do not enable Zlib compression on:

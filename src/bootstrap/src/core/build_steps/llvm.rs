@@ -641,6 +641,12 @@ impl CommandLineStep for Llvm {
             enabled_llvm_projects.push("clang");
         }
 
+        if target.contains("wasi") {
+            // The in-process linker used when rustc is hosted on WASI needs the lld libraries.
+            // See compiler/rustc_llvm/llvm-wrapper/LLD.cpp.
+            enabled_llvm_projects.push("lld");
+        }
+
         // We want libxml to be disabled.
         // See https://github.com/rust-lang/rust/pull/50104
         cfg.define("LLVM_ENABLE_LIBXML2", "OFF");
@@ -714,6 +720,10 @@ impl CommandLineStep for Llvm {
 
         configure_cmake(builder, target, &mut cfg, true, ldflags, CcFlags::default(), &[]);
         configure_llvm(builder, target, &mut cfg);
+
+        if target.contains("wasi") {
+            configure_llvm_for_wasi(builder, target, &mut cfg);
+        }
 
         for (key, val) in &builder.config.llvm_build_config {
             cfg.define(key, val);
@@ -877,6 +887,72 @@ fn try_link_with_in_tree_lld(
         let mut dylib_path = helpers::dylib_path();
         dylib_path.insert(0, llvm_output.root_dir().join("lib"));
         cfg.env(helpers::dylib_path_var(), t!(env::join_paths(&dylib_path)));
+    }
+}
+
+/// Settings for building LLVM (and the LLD libraries) to run on WASI, needed when rustc
+/// itself is hosted on WASI. Only used when `target` is a WASI target.
+fn configure_llvm_for_wasi(
+    builder: &Builder<'_>,
+    target: TargetSelection,
+    cfg: &mut cmake::Config,
+) {
+    let wasi_sdk_path = builder
+        .wasi_sdk_path
+        .as_ref()
+        .expect("WASI_SDK_PATH must be set to build LLVM for a WASI target");
+    let wasi_sdk_path = wasi_sdk_path.to_str().expect("invalid WASI_SDK_PATH");
+
+    // LLVM has some (unreachable in our configuration) calls to mmap.
+    let wasi_cflags = " -D_WASI_EMULATED_MMAN";
+    let mut wasi_ldflags = String::from(" -lwasi-emulated-mman");
+    // Depending on the code being compiled, both Clang and LLD can consume unbounded amounts of memory.
+    wasi_ldflags.push_str(" -Wl,--max-memory=4294967296");
+    // Compiling C++ code requires a lot of stack space and can overflow and corrupt the heap.
+    wasi_ldflags.push_str(" -Wl,-z,stack-size=1048576 -Wl,--stack-first");
+
+    let toolchain_file = if target.contains("threads") {
+        format!("{wasi_sdk_path}/share/cmake/wasi-sdk-pthread.cmake")
+    } else {
+        format!("{wasi_sdk_path}/share/cmake/wasi-sdk.cmake")
+    };
+
+    cfg.define("WASI", "TRUE")
+        .define("CMAKE_TOOLCHAIN_FILE", toolchain_file)
+        .define("CMAKE_EXECUTABLE_SUFFIX", ".wasm")
+        .define("CMAKE_C_FLAGS", wasi_cflags)
+        .define("CMAKE_CXX_FLAGS", wasi_cflags)
+        .define("CMAKE_EXE_LINKER_FLAGS", wasi_ldflags)
+        .define("LLVM_BUILD_SHARED_LIBS", "OFF")
+        .define("LLVM_ENABLE_PIC", "OFF")
+        .define("LLVM_BUILD_STATIC", "ON")
+        .define("LLVM_BUILD_RUNTIME", "OFF")
+        .define("LLVM_BUILD_TOOLS", "OFF")
+        .define("LLVM_INCLUDE_UTILS", "OFF")
+        .define("LLVM_BUILD_UTILS", "OFF")
+        .define("LLVM_INCLUDE_RUNTIMES", "OFF")
+        .define("LLVM_INCLUDE_EXAMPLES", "OFF")
+        .define("LLVM_INCLUDE_TESTS", "OFF")
+        .define("LLVM_INCLUDE_BENCHMARKS", "OFF")
+        .define("LLVM_INCLUDE_DOCS", "OFF")
+        .define("LLD_BUILD_TOOLS", "OFF")
+        .define("CMAKE_BUILD_TYPE", "MinSizeRel")
+        .define("HAVE_DLOPEN", "");
+
+    // No tools are needed (and most don't build on WASI): the compiler only links the
+    // libraries. Disable every tool in llvm/tools rather than listing them, so that tools
+    // added by newer LLVM versions don't break the build.
+    if let Ok(tools) = std::fs::read_dir(builder.src.join("src/llvm-project/llvm/tools")) {
+        for tool in tools.flatten().filter(|tool| tool.path().is_dir()) {
+            let name = tool.file_name().to_string_lossy().to_uppercase().replace('-', "_");
+            cfg.define(format!("LLVM_TOOL_{name}_BUILD"), "OFF");
+        }
+    }
+
+    if target.contains("threads") {
+        cfg.define("LLVM_ENABLE_THREADS", "ON");
+    } else {
+        cfg.define("LLVM_ENABLE_THREADS", "OFF");
     }
 }
 
