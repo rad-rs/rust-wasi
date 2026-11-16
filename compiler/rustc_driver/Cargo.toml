@@ -4,7 +4,11 @@ version = "0.0.0"
 edition = "2024"
 
 [lib]
-crate-type = ["dylib"]
+# "lib" is needed in addition to "dylib" because targets that cannot build dylibs
+# (such as wasm32-wasip1-threads, when rustc itself is hosted there) are rejected
+# by cargo if dylib is the only crate type. Hosts that support dylibs still link the
+# dylib (bootstrap uses -Cprefer-dynamic).
+crate-type = ["lib", "dylib"]
 
 [dependencies]
 # tidy-alphabetical-start
