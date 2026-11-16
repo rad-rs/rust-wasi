@@ -1291,6 +1291,28 @@ fn link_natively(
 
     // Invoke the system linker
     info!("{cmd:?}");
+
+    // WASI can't spawn a linker, so link through the LLD that is linked into rustc.
+    #[cfg(target_os = "wasi")]
+    if matches!(flavor, LinkerFlavor::Gnu(Cc::No, Lld::Yes) | LinkerFlavor::WasmLld(Cc::No)) {
+        unsafe extern "C" {
+            fn RustRunLld(
+                argc: std::ffi::c_int,
+                argv: *const *const std::ffi::c_char,
+            ) -> std::ffi::c_int;
+        }
+
+        let cmd = cmd.command();
+        let mut args = cmd
+            .get_args()
+            .map(|arg| std::ffi::CString::new(arg.as_encoded_bytes()).unwrap())
+            .collect::<Vec<_>>();
+        args.insert(0, std::ffi::CString::new(cmd.get_program().as_encoded_bytes()).unwrap());
+        let argv = args.iter().map(|arg| arg.as_ptr()).collect::<Vec<_>>();
+
+        let ret = unsafe { RustRunLld(args.len() as std::ffi::c_int, argv.as_ptr()) };
+        std::process::exit(ret);
+    }
     let unknown_arg_regex =
         Regex::new(r"(unknown|unrecognized) (command line )?(option|argument)").unwrap();
     let mut prog;
