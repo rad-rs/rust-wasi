@@ -341,6 +341,14 @@ pub(crate) fn default_sysroot() -> PathBuf {
         rustlib_path.exists().then_some(p)
     }
 
-    from_env_args_next()
-        .unwrap_or_else(|| default_from_rustc_driver_dll().expect("Failed finding sysroot"))
+    from_env_args_next().unwrap_or_else(|| {
+        let from_dll = default_from_rustc_driver_dll();
+        // WASI has no way to find the path of the running binary or library, so there is no
+        // default sysroot. `Sysroot::new` computes this eagerly even when `--sysroot` is
+        // passed, so don't panic here; callers must pass `--sysroot` explicitly.
+        if cfg!(target_os = "wasi") && from_dll.is_err() {
+            return PathBuf::from("/");
+        }
+        from_dll.expect("Failed finding sysroot")
+    })
 }
