@@ -209,6 +209,17 @@ fn run_in_thread_with_globals<F: FnOnce(CurrentGcx) -> R + Send, R: Send>(
     // the parallel compiler, in particular to ensure there is no accidental
     // sharing of data between the main thread and the compilation thread
     // (which might cause problems for the parallel compiler).
+    // wasm hosts can't spawn a dedicated thread for the compiler, so run on the current one.
+    if cfg!(target_family = "wasm") {
+        let _ = thread_stack_size;
+        return rustc_span::create_session_globals_then(
+            edition,
+            extra_symbols,
+            Some(sm_inputs),
+            || f(CurrentGcx::new()),
+        );
+    }
+
     let builder = thread::Builder::new().name("rustc".to_string()).stack_size(thread_stack_size);
 
     // We build the session globals and run `f` on the spawned thread, because
