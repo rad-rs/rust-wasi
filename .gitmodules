@@ -24,8 +24,8 @@
 	shallow = true
 [submodule "src/llvm-project"]
 	path = src/llvm-project
-	url = https://github.com/rad-rs/llvm-project.git
-	branch = wasi-host-support
+	url = https://github.com/rad-rs/rustc-llvm-wasi.git
+	branch = wasi-host/23.1
 	shallow = true
 [submodule "src/doc/embedded-book"]
 	path = src/doc/embedded-book
