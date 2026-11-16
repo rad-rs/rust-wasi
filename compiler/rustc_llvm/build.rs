@@ -311,6 +311,18 @@ fn main() {
         cfg.define("NDEBUG", None);
     }
 
+    if target.contains("wasi") {
+        // When rustc itself is compiled to WASI it can't spawn a linker, so it links
+        // in-process through LLD instead. See `RustRunLld` in `llvm-wrapper/LLD.cpp`.
+        // ref src/bootstrap/src/core/build_steps/llvm.rs
+        let wasi_sdk_path =
+            PathBuf::from(env::var_os("WASI_SDK_PATH").expect("WASI_SDK_PATH not set"));
+        cfg.compiler(wasi_sdk_path.join("bin").join(format!("{target}-clang++")));
+        cfg.flag("-pthread");
+        cfg.flag("-D_WASI_EMULATED_MMAN");
+        cfg.file("llvm-wrapper/LLD.cpp");
+    }
+
     rerun_if_changed_anything_in_dir(Path::new("llvm-wrapper"));
     cfg.file("llvm-wrapper/PassWrapper.cpp")
         .file("llvm-wrapper/RustWrapper.cpp")
@@ -438,6 +450,26 @@ fn main() {
         println!("cargo:rustc-link-lib={kind}={name}");
     }
 
+    if target.contains("wasi") {
+        // The in-process linker (llvm-wrapper/LLD.cpp). Dependents come before their
+        // dependencies for static linking.
+        for lib in [
+            "LLVMOption",
+            "lldMinGW",
+            "lldCOFF",
+            "LLVMWindowsDriver",
+            "LLVMLibDriver",
+            "LLVMWindowsManifest",
+            // LLVMLTO uses DTLTO symbols but its CMake link components do not list it.
+            "LLVMDTLTO",
+            "lldCommon",
+            "lldELF",
+            "lldWasm",
+        ] {
+            println!("cargo:rustc-link-lib=static={lib}");
+        }
+    }
+
     // LLVM ldflags
     //
     // If we're a cross-compile of LLVM then unfortunately we can't trust these
@@ -489,6 +521,7 @@ fn main() {
         || target.contains("windows-gnullvm")
         || target.contains("aix")
         || target.contains("ohos")
+        || target.contains("wasi")
     {
         "c++"
     } else if target.contains("netbsd") && llvm_static_stdcpp.is_some() {
